@@ -7,7 +7,7 @@ import {
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import BucketDetail, { BucketDetailView } from './BucketDetail';
 import { BucketService } from '../api/buckets';
 import { IndexService } from '../api/indexes';
@@ -107,6 +107,21 @@ function renderIndexes(
         bucketName="my-bucket"
         indexService={indexService}
       />
+    </MemoryRouter>
+  );
+}
+
+function renderWithRouter(ui: React.ReactElement) {
+  function LocationProbe() {
+    const location = useLocation();
+    return <div data-testid="location-probe">{location.pathname}</div>;
+  }
+  return render(
+    <MemoryRouter>
+      <>
+        {ui}
+        <LocationProbe />
+      </>
     </MemoryRouter>
   );
 }
@@ -518,7 +533,7 @@ describe('BucketDetail page', () => {
         { indexName: 'products', dimension: 128, distanceMetric: 'euclidean' },
       ]);
       expect(
-        await screen.findByRole('button', { name: 'products' })
+        await screen.findByRole('link', { name: 'products' })
       ).toBeInTheDocument();
       expect(screen.getByText('Dimension')).toBeInTheDocument();
       expect(screen.getByText('Distance metric')).toBeInTheDocument();
@@ -655,15 +670,30 @@ describe('BucketDetail page', () => {
       ).toBeInTheDocument();
     });
 
-    it('renders index details in the drawer', async () => {
-      const { indexService } = setup([
-        { indexName: 'details', indexArn: 'arn:index', dimension: 64 },
-      ]);
+    it('navigates to the index detail page when the index name is clicked', async () => {
+      const bucketService = createMockBucketService();
+      mockOverview(bucketService);
+      mockPolicy(bucketService, undefined);
+      const indexService = createMockIndexService();
+      (indexService.listIndexes as ReturnType<typeof vi.fn>).mockResolvedValue({
+        indexes: [
+          { indexName: 'details', indexArn: 'arn:index', dimension: 64 },
+        ],
+      });
+
+      renderWithRouter(
+        <BucketDetailView
+          bucketService={bucketService}
+          bucketName="my-bucket"
+          indexService={indexService}
+        />
+      );
+
       const user = userEvent.setup();
-      await user.click(await screen.findByRole('button', { name: 'details' }));
-      expect(await screen.findByRole('dialog')).toHaveTextContent('details');
-      expect(screen.getByText('arn:index')).toBeInTheDocument();
-      expect(screen.getByText('Created —')).toBeInTheDocument();
+      await user.click(await screen.findByRole('link', { name: 'details' }));
+      expect(screen.getByTestId('location-probe')).toHaveTextContent(
+        '/buckets/my-bucket/indexes/details'
+      );
       expect(indexService.getIndex).not.toHaveBeenCalled();
     });
   });

@@ -11,7 +11,6 @@ import {
   Space,
   Spin,
   Table,
-  Drawer,
   Tabs,
   Typography,
 } from 'antd';
@@ -169,7 +168,6 @@ function BucketDetailView({
   });
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState<string | null>(null);
-  const [detail, setDetail] = useState<IndexSummary | null>(null);
   const loadIndexes = async () => {
     setIndexesLoading(true);
     setIndexesError(null);
@@ -268,10 +266,8 @@ function BucketDetailView({
             {
               title: 'Name',
               dataIndex: 'indexName',
-              render: (v: string, r: IndexSummary) => (
-                <Button type="link" onClick={() => setDetail(r)}>
-                  {v}
-                </Button>
+              render: (v: string) => (
+                <Link to={`/buckets/${bucketName}/indexes/${v}`}>{v}</Link>
               ),
             },
             {
@@ -351,22 +347,6 @@ function BucketDetailView({
           .
         </Typography.Text>
       </Modal>
-      <Drawer
-        title={detail?.indexName}
-        open={!!detail}
-        onClose={() => setDetail(null)}
-      >
-        {detail && (
-          <Space direction="vertical">
-            <Typography.Text copyable style={{ fontFamily: monoFontFamily }}>
-              {detail.indexArn ?? '—'}
-            </Typography.Text>
-            <Typography.Text>
-              Created {formatDate(detail.creationTime)}
-            </Typography.Text>
-          </Space>
-        )}
-      </Drawer>
     </Card>
   );
 

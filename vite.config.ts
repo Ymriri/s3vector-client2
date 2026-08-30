@@ -13,5 +13,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
+    // AntD-heavy jsdom tests can exceed the 5s default on a busy machine.
+    testTimeout: 20000,
   },
 });

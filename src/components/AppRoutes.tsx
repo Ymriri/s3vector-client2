@@ -3,6 +3,7 @@ import Shell from './Shell';
 import Dashboard from '../pages/Dashboard';
 import VectorBuckets from '../pages/VectorBuckets';
 import BucketDetail from '../pages/BucketDetail';
+import IndexDetail from '../pages/IndexDetail';
 import QueryConsole from '../pages/QueryConsole';
 import Settings from '../pages/Settings';
 
@@ -13,6 +14,10 @@ function AppRoutes() {
         <Route index element={<Dashboard />} />
         <Route path="buckets" element={<VectorBuckets />} />
         <Route path="buckets/:bucketName" element={<BucketDetail />} />
+        <Route
+          path="buckets/:bucketName/indexes/:indexName"
+          element={<IndexDetail />}
+        />
         <Route path="query" element={<QueryConsole />} />
         <Route path="settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
