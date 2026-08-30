@@ -5,9 +5,13 @@ import {
   Card,
   Empty,
   Input,
+  InputNumber,
   Modal,
+  Radio,
   Space,
   Spin,
+  Table,
+  Drawer,
   Tabs,
   Typography,
 } from 'antd';
@@ -18,18 +22,25 @@ import { useBucketService } from '../api/useBucketService';
 import { ErrorBanner, type AwsErrorLike } from '../components/ErrorBanner';
 import { errorFromCaught } from '../lib/error';
 import { formatDate, formatJson } from '../lib/format';
+import { IndexService } from '../api/indexes';
+import { useIndexService } from '../api/useIndexService';
+import type { IndexSummary } from '@aws-sdk/client-s3vectors';
 
 const monoFontFamily = 'JetBrains Mono, ui-monospace, monospace';
 
 interface BucketDetailViewProps {
   bucketService: BucketService;
   bucketName: string;
+  indexService?: IndexService;
 }
 
 function BucketDetailView({
   bucketService,
   bucketName,
+  indexService,
 }: BucketDetailViewProps) {
+  const defaultIndexService = useIndexService();
+  const resolvedIndexService = indexService ?? defaultIndexService;
   const [bucket, setBucket] = useState<VectorBucket | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<AwsErrorLike | null>(null);
@@ -145,20 +156,217 @@ function BucketDetailView({
     }
   };
 
+  const [indexes, setIndexes] = useState<IndexSummary[]>([]);
+  const [indexesLoading, setIndexesLoading] = useState(false);
+  const [indexesError, setIndexesError] = useState<AwsErrorLike | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState<AwsErrorLike | null>(null);
+  const [form, setForm] = useState({
+    name: '',
+    dimension: 3,
+    metric: 'cosine' as 'cosine' | 'euclidean',
+    keys: '',
+  });
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState<string | null>(null);
+  const [detail, setDetail] = useState<IndexSummary | null>(null);
+  const loadIndexes = async () => {
+    setIndexesLoading(true);
+    setIndexesError(null);
+    try {
+      const r = await resolvedIndexService.listIndexes({
+        vectorBucketName: bucketName,
+      });
+      setIndexes(r.indexes ?? []);
+    } catch (e) {
+      setIndexesError(errorFromCaught(e));
+    } finally {
+      setIndexesLoading(false);
+    }
+  };
+  /* eslint-disable react-hooks/exhaustive-deps */
+  useEffect(() => {
+    void loadIndexes();
+  }, [bucketName, resolvedIndexService]);
+  /* eslint-enable react-hooks/exhaustive-deps */
+  const createIndex = async () => {
+    if (
+      !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$/.test(form.name) ||
+      !Number.isInteger(form.dimension) ||
+      form.dimension < 1 ||
+      form.dimension > 4096
+    ) {
+      setCreateError({
+        name: 'ValidationError',
+        message: 'Enter a valid name and integer dimension from 1 to 4096.',
+      });
+      return;
+    }
+    setCreateError(null);
+    try {
+      await resolvedIndexService.createIndex({
+        bucketName,
+        indexName: form.name,
+        dimension: form.dimension,
+        distanceMetric: form.metric,
+        metadataConfiguration: form.keys.trim()
+          ? {
+              nonFilterableMetadataKeys: form.keys
+                .split(',')
+                .map((k) => k.trim())
+                .filter(Boolean),
+            }
+          : undefined,
+      });
+      setCreateOpen(false);
+      await loadIndexes();
+    } catch (e) {
+      setCreateError(errorFromCaught(e));
+    }
+  };
+  const deleteIndex = async () => {
+    if (!deleteOpen) return;
+    setDeleting(deleteOpen);
+    try {
+      await resolvedIndexService.deleteIndex(bucketName, deleteOpen);
+      setDeleteOpen(null);
+      await loadIndexes();
+    } catch (e) {
+      setIndexesError(errorFromCaught(e));
+    } finally {
+      setDeleting(null);
+    }
+  };
   const indexesTab = (
-    <Card>
-      <Empty description="No indexes in this bucket yet">
-        <Button
-          type="primary"
-          disabled
-          title="Index management arrives in milestone M3"
-        >
+    <Card
+      extra={
+        <Button type="primary" onClick={() => setCreateOpen(true)}>
           Create index
         </Button>
-      </Empty>
-      <Typography.Paragraph type="secondary" style={{ marginTop: 12 }}>
-        Index management will be available in milestone M3.
-      </Typography.Paragraph>
+      }
+    >
+      <ErrorBanner
+        error={indexesError}
+        onDismiss={() => setIndexesError(null)}
+      />
+      {indexesLoading ? (
+        <div data-testid="indexes-loading">
+          <Spin />
+        </div>
+      ) : indexes.length === 0 ? (
+        <Empty description="No indexes in this bucket yet">
+          <Button type="primary" onClick={() => setCreateOpen(true)}>
+            Create index
+          </Button>
+        </Empty>
+      ) : (
+        <Table
+          rowKey={(r) => r.indexName ?? ''}
+          dataSource={indexes}
+          pagination={{ pageSize: 10 }}
+          columns={[
+            {
+              title: 'Name',
+              dataIndex: 'indexName',
+              render: (v: string, r: IndexSummary) => (
+                <Button type="link" onClick={() => setDetail(r)}>
+                  {v}
+                </Button>
+              ),
+            },
+            {
+              title: 'Created',
+              dataIndex: 'creationTime',
+              render: (v: Date) => formatDate(v),
+            },
+            { title: 'Dimension', render: () => '—' },
+            { title: 'Distance metric', render: () => '—' },
+            {
+              title: 'Actions',
+              render: (_: unknown, r: IndexSummary) => (
+                <Button
+                  danger
+                  loading={deleting === r.indexName}
+                  onClick={() => setDeleteOpen(r.indexName ?? null)}
+                >
+                  Delete
+                </Button>
+              ),
+            },
+          ]}
+        />
+      )}
+      <Modal
+        title="Create index"
+        open={createOpen}
+        onOk={() => void createIndex()}
+        onCancel={() => setCreateOpen(false)}
+        okText="Create"
+      >
+        <ErrorBanner
+          error={createError}
+          onDismiss={() => setCreateError(null)}
+        />
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Input
+            placeholder="Index name"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+          <InputNumber
+            min={1}
+            max={4096}
+            precision={0}
+            style={{ width: '100%' }}
+            value={form.dimension}
+            onChange={(v) => setForm({ ...form, dimension: v ?? 0 })}
+          />
+          <Radio.Group
+            value={form.metric}
+            onChange={(e) => setForm({ ...form, metric: e.target.value })}
+          >
+            <Radio value="cosine">Cosine</Radio>
+            <Radio value="euclidean">Euclidean</Radio>
+          </Radio.Group>
+          <Input
+            placeholder="Non-filterable metadata keys (comma-separated)"
+            value={form.keys}
+            onChange={(e) => setForm({ ...form, keys: e.target.value })}
+          />
+        </Space>
+      </Modal>
+      <Modal
+        title="Delete index?"
+        open={!!deleteOpen}
+        onOk={() => void deleteIndex()}
+        onCancel={() => setDeleteOpen(null)}
+        okButtonProps={{ danger: true }}
+        confirmLoading={!!deleting}
+      >
+        <Typography.Text>
+          This will permanently delete{' '}
+          <Typography.Text type="danger" strong>
+            {deleteOpen}
+          </Typography.Text>
+          .
+        </Typography.Text>
+      </Modal>
+      <Drawer
+        title={detail?.indexName}
+        open={!!detail}
+        onClose={() => setDetail(null)}
+      >
+        {detail && (
+          <Space direction="vertical">
+            <Typography.Text copyable style={{ fontFamily: monoFontFamily }}>
+              {detail.indexArn ?? '—'}
+            </Typography.Text>
+            <Typography.Text>
+              Created {formatDate(detail.creationTime)}
+            </Typography.Text>
+          </Space>
+        )}
+      </Drawer>
     </Card>
   );
 
@@ -336,6 +544,7 @@ function BucketDetailView({
 function BucketDetail() {
   const { bucketName } = useParams<{ bucketName: string }>();
   const bucketService = useBucketService();
+  const indexService = useIndexService();
 
   if (!bucketName) {
     return (
@@ -344,7 +553,11 @@ function BucketDetail() {
   }
 
   return (
-    <BucketDetailView bucketService={bucketService} bucketName={bucketName} />
+    <BucketDetailView
+      bucketService={bucketService}
+      bucketName={bucketName}
+      indexService={indexService}
+    />
   );
 }
 

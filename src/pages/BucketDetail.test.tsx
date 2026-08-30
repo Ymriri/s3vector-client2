@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import BucketDetail, { BucketDetailView } from './BucketDetail';
 import { BucketService } from '../api/buckets';
+import { IndexService } from '../api/indexes';
 import { useSettingsStore } from '../settings/settingsStore';
 
 const mockSend = vi.fn();
@@ -82,6 +83,30 @@ function renderView(service: BucketService, bucketName = 'my-bucket') {
   return render(
     <MemoryRouter>
       <BucketDetailView bucketService={service} bucketName={bucketName} />
+    </MemoryRouter>
+  );
+}
+
+function createMockIndexService(): IndexService {
+  return {
+    listIndexes: vi.fn(),
+    createIndex: vi.fn(),
+    deleteIndex: vi.fn(),
+    getIndex: vi.fn(),
+  } as unknown as IndexService;
+}
+
+function renderIndexes(
+  bucketService: BucketService,
+  indexService: IndexService
+) {
+  return render(
+    <MemoryRouter>
+      <BucketDetailView
+        bucketService={bucketService}
+        bucketName="my-bucket"
+        indexService={indexService}
+      />
     </MemoryRouter>
   );
 }
@@ -452,6 +477,194 @@ describe('BucketDetail page', () => {
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByText('arn-route')).toBeInTheDocument();
+    });
+  });
+
+  describe('indexes', () => {
+    function setup(indexes: unknown[] = []) {
+      const bucketService = createMockBucketService();
+      mockOverview(bucketService);
+      mockPolicy(bucketService, undefined);
+      const indexService = createMockIndexService();
+      (indexService.listIndexes as ReturnType<typeof vi.fn>).mockResolvedValue({
+        indexes,
+      });
+      renderIndexes(bucketService, indexService);
+      return { indexService };
+    }
+
+    it('shows index loading state', async () => {
+      const bucketService = createMockBucketService();
+      mockOverview(bucketService);
+      mockPolicy(bucketService, undefined);
+      const indexService = createMockIndexService();
+      (indexService.listIndexes as ReturnType<typeof vi.fn>).mockImplementation(
+        () => new Promise(() => undefined)
+      );
+      renderIndexes(bucketService, indexService);
+      await screen.findByRole('tab', { name: /indexes/i });
+      expect(screen.getByTestId('indexes-loading')).toBeInTheDocument();
+    });
+
+    it('shows empty state', async () => {
+      setup();
+      expect(
+        await screen.findByText(/no indexes in this bucket yet/i)
+      ).toBeInTheDocument();
+    });
+
+    it('renders index rows', async () => {
+      setup([
+        { indexName: 'products', dimension: 128, distanceMetric: 'euclidean' },
+      ]);
+      expect(
+        await screen.findByRole('button', { name: 'products' })
+      ).toBeInTheDocument();
+      expect(screen.getByText('Dimension')).toBeInTheDocument();
+      expect(screen.getByText('Distance metric')).toBeInTheDocument();
+    });
+
+    it('creates an index and refreshes the list', async () => {
+      const bucketService = createMockBucketService();
+      mockOverview(bucketService);
+      mockPolicy(bucketService, undefined);
+      const indexService = createMockIndexService();
+      const list = indexService.listIndexes as ReturnType<typeof vi.fn>;
+      list
+        .mockResolvedValueOnce({ indexes: [] })
+        .mockResolvedValueOnce({ indexes: [{ indexName: 'new-index' }] });
+      renderIndexes(bucketService, indexService);
+      (indexService.createIndex as ReturnType<typeof vi.fn>).mockResolvedValue(
+        {}
+      );
+      const user = userEvent.setup();
+      await screen.findByText(/no indexes in this bucket yet/i);
+      await user.click(
+        screen.getAllByRole('button', { name: /create index/i })[0]
+      );
+      const dialog = await screen.findByRole('dialog', {
+        name: /create index/i,
+      });
+      fireEvent.change(within(dialog).getByPlaceholderText('Index name'), {
+        target: { value: 'new-index' },
+      });
+      fireEvent.change(within(dialog).getByRole('spinbutton'), {
+        target: { value: '128' },
+      });
+      fireEvent.change(within(dialog).getByPlaceholderText(/non-filterable/i), {
+        target: { value: 'category, brand' },
+      });
+      await user.click(
+        within(dialog).getByRole('button', { name: /^create$/i })
+      );
+      await waitFor(() =>
+        expect(indexService.createIndex).toHaveBeenCalledWith({
+          bucketName: 'my-bucket',
+          indexName: 'new-index',
+          dimension: 128,
+          distanceMetric: 'cosine',
+          metadataConfiguration: {
+            nonFilterableMetadataKeys: ['category', 'brand'],
+          },
+        })
+      );
+      await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+    });
+
+    it('shows validation errors for invalid name and dimension', async () => {
+      const { indexService } = setup();
+      const user = userEvent.setup();
+      await screen.findByText(/no indexes in this bucket yet/i);
+      await user.click(
+        screen.getAllByRole('button', { name: /create index/i })[0]
+      );
+      const dialog = await screen.findByRole('dialog', {
+        name: /create index/i,
+      });
+      fireEvent.change(within(dialog).getByRole('spinbutton'), {
+        target: { value: '0' },
+      });
+      await user.click(
+        within(dialog).getByRole('button', { name: /^create$/i })
+      );
+      expect(
+        await within(dialog).findByText(/validationerror/i)
+      ).toBeInTheDocument();
+      expect(indexService.createIndex).not.toHaveBeenCalled();
+    });
+
+    it('shows create API errors', async () => {
+      const { indexService } = setup();
+      const error = Object.assign(new Error('already exists'), {
+        name: 'ConflictException',
+      });
+      (indexService.createIndex as ReturnType<typeof vi.fn>).mockRejectedValue(
+        error
+      );
+      const user = userEvent.setup();
+      await screen.findByText(/no indexes in this bucket yet/i);
+      await user.click(
+        screen.getAllByRole('button', { name: /create index/i })[0]
+      );
+      const dialog = await screen.findByRole('dialog', {
+        name: /create index/i,
+      });
+      fireEvent.change(within(dialog).getByPlaceholderText('Index name'), {
+        target: { value: 'existing' },
+      });
+      await user.click(
+        within(dialog).getByRole('button', { name: /^create$/i })
+      );
+      expect(
+        await within(dialog).findByText(/conflictexception/i)
+      ).toBeInTheDocument();
+    });
+
+    it('confirms deletion and shows delete errors', async () => {
+      const { indexService } = setup([{ indexName: 'old-index' }]);
+      (indexService.deleteIndex as ReturnType<typeof vi.fn>).mockResolvedValue(
+        {}
+      );
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', { name: /delete/i }));
+      const dialog = await screen.findByRole('dialog', {
+        name: /delete index/i,
+      });
+      await user.click(within(dialog).getByRole('button', { name: /^ok$/i }));
+      await waitFor(() =>
+        expect(indexService.deleteIndex).toHaveBeenCalledWith(
+          'my-bucket',
+          'old-index'
+        )
+      );
+    });
+
+    it('shows an error when deletion fails', async () => {
+      const { indexService } = setup([{ indexName: 'old-index' }]);
+      (indexService.deleteIndex as ReturnType<typeof vi.fn>).mockRejectedValue(
+        Object.assign(new Error('denied'), { name: 'AccessDeniedException' })
+      );
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', { name: /delete/i }));
+      const dialog = await screen.findByRole('dialog', {
+        name: /delete index/i,
+      });
+      await user.click(within(dialog).getByRole('button', { name: /^ok$/i }));
+      expect(
+        await screen.findByText(/accessdeniedexception/i)
+      ).toBeInTheDocument();
+    });
+
+    it('renders index details in the drawer', async () => {
+      const { indexService } = setup([
+        { indexName: 'details', indexArn: 'arn:index', dimension: 64 },
+      ]);
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', { name: 'details' }));
+      expect(await screen.findByRole('dialog')).toHaveTextContent('details');
+      expect(screen.getByText('arn:index')).toBeInTheDocument();
+      expect(screen.getByText('Created —')).toBeInTheDocument();
+      expect(indexService.getIndex).not.toHaveBeenCalled();
     });
   });
 });
