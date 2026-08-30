@@ -11,6 +11,7 @@ import {
 } from 'antd';
 import { useSettingsStore } from '../settings/settingsStore';
 import { S3VectorsClientFactory } from '../api/S3VectorsClientFactory';
+import { BucketService } from '../api/buckets';
 
 function Settings() {
   const settings = useSettingsStore();
@@ -62,7 +63,8 @@ function Settings() {
         sessionToken: settings.sessionToken || undefined,
         endpoint: settings.endpoint || undefined,
       });
-      const response = await factory.listVectorBuckets();
+      const bucketService = new BucketService(factory);
+      const response = await bucketService.listVectorBuckets();
       const count = response.vectorBuckets?.length ?? 0;
       setTestStatus({
         type: 'success',

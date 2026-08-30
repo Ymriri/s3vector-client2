@@ -16,6 +16,13 @@ const menuItems = [
   { key: '/settings', icon: <SettingOutlined />, label: 'Settings' },
 ];
 
+function selectedKey(pathname: string): string {
+  if (pathname.startsWith('/buckets')) return '/buckets';
+  if (pathname.startsWith('/query')) return '/query';
+  if (pathname.startsWith('/settings')) return '/settings';
+  return '/';
+}
+
 function Shell() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -36,7 +43,7 @@ function Shell() {
         </div>
         <Menu
           mode="inline"
-          selectedKeys={[location.pathname]}
+          selectedKeys={[selectedKey(location.pathname)]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
         />

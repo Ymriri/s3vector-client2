@@ -4,13 +4,15 @@ import userEvent from '@testing-library/user-event';
 import Settings from './Settings';
 import { useSettingsStore } from '../settings/settingsStore';
 
-const mockListVectorBuckets = vi.fn();
-const mockGetClient = vi.fn();
+const mockSend = vi.fn();
 
-vi.mock('../api/S3VectorsClientFactory', () => ({
-  S3VectorsClientFactory: vi.fn().mockImplementation(() => ({
-    getClient: mockGetClient,
-    listVectorBuckets: mockListVectorBuckets,
+vi.mock('@aws-sdk/client-s3vectors', () => ({
+  S3VectorsClient: vi.fn().mockImplementation(() => ({
+    send: mockSend,
+  })),
+  ListVectorBucketsCommand: vi.fn().mockImplementation((input) => ({
+    input,
+    name: 'ListVectorBucketsCommand',
   })),
 }));
 
@@ -82,7 +84,7 @@ describe('Settings page', () => {
   });
 
   it('shows success message with bucket count on connection test', async () => {
-    mockListVectorBuckets.mockResolvedValueOnce({
+    mockSend.mockResolvedValueOnce({
       vectorBuckets: [
         {
           vectorBucketName: 'b1',
@@ -120,7 +122,7 @@ describe('Settings page', () => {
     const error = new Error('Access denied');
     error.name = 'AccessDeniedException';
     (error as { code?: string }).code = 'AccessDeniedException';
-    mockListVectorBuckets.mockRejectedValueOnce(error);
+    mockSend.mockRejectedValueOnce(error);
 
     useSettingsStore.getState().saveSettings({
       region: 'us-east-1',

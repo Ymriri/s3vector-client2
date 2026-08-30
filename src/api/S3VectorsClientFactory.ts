@@ -1,10 +1,4 @@
-import {
-  S3VectorsClient,
-  ListVectorBucketsCommand,
-  GetVectorBucketCommand,
-  type ListVectorBucketsCommandOutput,
-  type GetVectorBucketCommandOutput,
-} from '@aws-sdk/client-s3vectors';
+import { S3VectorsClient } from '@aws-sdk/client-s3vectors';
 
 export interface ClientSettings {
   region: string;
@@ -40,17 +34,5 @@ export class S3VectorsClientFactory {
       this.client = new S3VectorsClient(config);
     }
     return this.client;
-  }
-
-  async listVectorBuckets(): Promise<ListVectorBucketsCommandOutput> {
-    const command = new ListVectorBucketsCommand({});
-    return this.getClient().send(command);
-  }
-
-  async getVectorBucket(
-    vectorBucketName: string
-  ): Promise<GetVectorBucketCommandOutput> {
-    const command = new GetVectorBucketCommand({ vectorBucketName });
-    return this.getClient().send(command);
   }
 }

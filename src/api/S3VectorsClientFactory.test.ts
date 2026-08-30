@@ -8,22 +8,10 @@ vi.mock('@aws-sdk/client-s3vectors', () => {
     S3VectorsClient: vi.fn().mockImplementation(() => ({
       send: mockSend,
     })),
-    ListVectorBucketsCommand: vi.fn().mockImplementation((input) => ({
-      input,
-      name: 'ListVectorBucketsCommand',
-    })),
-    GetVectorBucketCommand: vi.fn().mockImplementation((input) => ({
-      input,
-      name: 'GetVectorBucketCommand',
-    })),
   };
 });
 
-import {
-  S3VectorsClient,
-  ListVectorBucketsCommand,
-  GetVectorBucketCommand,
-} from '@aws-sdk/client-s3vectors';
+import { S3VectorsClient } from '@aws-sdk/client-s3vectors';
 
 describe('S3VectorsClientFactory', () => {
   beforeEach(() => {
@@ -115,62 +103,5 @@ describe('S3VectorsClientFactory', () => {
     factory.getClient();
 
     expect(S3VectorsClient).toHaveBeenCalledTimes(2);
-  });
-
-  describe('listVectorBuckets', () => {
-    it('sends ListVectorBucketsCommand and returns bucket summaries', async () => {
-      const factory = new S3VectorsClientFactory({
-        region: 'us-east-1',
-        accessKeyId: 'A',
-        secretAccessKey: 'B',
-      });
-
-      mockSend.mockResolvedValueOnce({
-        vectorBuckets: [
-          {
-            vectorBucketName: 'bucket-1',
-            vectorBucketArn: 'arn-1',
-            creationTime: new Date(),
-          },
-        ],
-      });
-
-      const result = await factory.listVectorBuckets();
-
-      expect(ListVectorBucketsCommand).toHaveBeenCalledWith({});
-      expect(mockSend).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'ListVectorBucketsCommand' })
-      );
-      expect(result.vectorBuckets ?? []).toHaveLength(1);
-      expect((result.vectorBuckets ?? [])[0].vectorBucketName).toBe('bucket-1');
-    });
-  });
-
-  describe('getVectorBucket', () => {
-    it('sends GetVectorBucketCommand with the bucket name', async () => {
-      const factory = new S3VectorsClientFactory({
-        region: 'us-east-1',
-        accessKeyId: 'A',
-        secretAccessKey: 'B',
-      });
-
-      mockSend.mockResolvedValueOnce({
-        vectorBucket: {
-          vectorBucketName: 'my-bucket',
-          vectorBucketArn: 'arn-2',
-          creationTime: new Date(),
-        },
-      });
-
-      const result = await factory.getVectorBucket('my-bucket');
-
-      expect(GetVectorBucketCommand).toHaveBeenCalledWith({
-        vectorBucketName: 'my-bucket',
-      });
-      expect(mockSend).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'GetVectorBucketCommand' })
-      );
-      expect(result.vectorBucket?.vectorBucketName).toBe('my-bucket');
-    });
   });
 });
