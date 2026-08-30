@@ -1,0 +1,7 @@
+node_modules/
+dist/
+awesome-design-md/
+*.local
+.env*
+.worktrees/
+worktrees/
