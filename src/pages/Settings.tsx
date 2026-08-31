@@ -12,6 +12,11 @@ import {
 import { useSettingsStore } from '../settings/settingsStore';
 import { S3VectorsClientFactory } from '../api/S3VectorsClientFactory';
 import { BucketService } from '../api/buckets';
+import {
+  sanitizeAccessKeyId,
+  sanitizeSecretAccessKey,
+  sanitizePlainInput,
+} from '../lib/credential';
 
 function Settings() {
   const settings = useSettingsStore();
@@ -42,16 +47,31 @@ function Settings() {
     sessionOnly: boolean;
     relay?: boolean;
   }) => {
+    // Credentials pasted from chat tools / JSON payloads are frequently
+    // mangled by escaping layers (\/, \uXXXX, stray newlines). Decode and
+    // validate them at save time so SigV4 signing works on the first try.
+    const akResult = sanitizeAccessKeyId(values.accessKeyId);
+    const skResult = sanitizeSecretAccessKey(values.secretAccessKey);
+    const warnings: string[] = [];
+    if (!akResult.valid && akResult.reason)
+      warnings.push(`AccessKey: ${akResult.reason}`);
+    if (!skResult.valid && skResult.reason)
+      warnings.push(`SecretKey: ${skResult.reason}`);
+
     settings.saveSettings({
-      accessKeyId: values.accessKeyId,
-      secretAccessKey: values.secretAccessKey,
-      sessionToken: values.sessionToken,
-      region: values.region || 'us-east-1',
-      endpoint: values.endpoint,
+      accessKeyId: akResult.value,
+      secretAccessKey: skResult.value,
+      sessionToken: sanitizePlainInput(values.sessionToken || ''),
+      region: sanitizePlainInput(values.region) || 'us-east-1',
+      endpoint: sanitizePlainInput(values.endpoint),
       sessionOnly: values.sessionOnly,
       relay: values.relay !== false,
     });
-    setTestStatus(null);
+    setTestStatus(
+      warnings.length > 0
+        ? { type: 'error', message: warnings.join('；') }
+        : null
+    );
   };
 
   const handleTestConnection = async () => {
