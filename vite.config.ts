@@ -9,6 +9,8 @@ const testConfig = {
   environment: 'jsdom',
   setupFiles: './src/test/setup.ts',
   testTimeout: 20000,
+  // Serial file execution: the AntD-heavy suites flake under parallel load.
+  fileParallelism: false,
 };
 
 export default defineConfig(({ mode }) => {
