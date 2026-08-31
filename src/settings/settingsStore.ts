@@ -12,6 +12,8 @@ export interface SettingsState {
   sessionToken: string;
   endpoint: string;
   sessionOnly: boolean;
+  /** Browser same-origin relay for custom endpoints (default true). */
+  relay?: boolean;
 }
 
 export interface SettingsActions {
@@ -28,6 +30,7 @@ export const initialSettings: SettingsState = {
   sessionToken: '',
   endpoint: '',
   sessionOnly: false,
+  relay: true,
 };
 
 const STORAGE_KEY = 's3vector-settings';

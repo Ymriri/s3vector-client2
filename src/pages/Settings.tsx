@@ -15,6 +15,7 @@ import { BucketService } from '../api/buckets';
 
 function Settings() {
   const settings = useSettingsStore();
+  const relayEnabled = settings.relay !== false;
   const [form] = Form.useForm();
   const [testStatus, setTestStatus] = useState<{
     type: 'success' | 'error';
@@ -32,7 +33,6 @@ function Settings() {
       sessionOnly: settings.sessionOnly,
     });
   }, [form, settings]);
-
   const handleSave = (values: {
     accessKeyId: string;
     secretAccessKey: string;
@@ -40,6 +40,7 @@ function Settings() {
     region: string;
     endpoint: string;
     sessionOnly: boolean;
+    relay?: boolean;
   }) => {
     settings.saveSettings({
       accessKeyId: values.accessKeyId,
@@ -48,6 +49,7 @@ function Settings() {
       region: values.region || 'us-east-1',
       endpoint: values.endpoint,
       sessionOnly: values.sessionOnly,
+      relay: values.relay !== false,
     });
     setTestStatus(null);
   };
@@ -62,6 +64,7 @@ function Settings() {
         secretAccessKey: settings.secretAccessKey,
         sessionToken: settings.sessionToken || undefined,
         endpoint: settings.endpoint || undefined,
+        relay: settings.relay !== false,
       });
       const bucketService = new BucketService(factory);
       const response = await bucketService.listVectorBuckets();
@@ -98,6 +101,7 @@ function Settings() {
             region: settings.region,
             endpoint: settings.endpoint,
             sessionOnly: settings.sessionOnly,
+            relay: settings.relay !== false,
           }}
         >
           <Form.Item
@@ -133,8 +137,23 @@ function Settings() {
             <Input placeholder="us-east-1" />
           </Form.Item>
 
-          <Form.Item label="Endpoint / proxy base URL" name="endpoint">
+          <Form.Item
+            label="Endpoint (SDK 真实地址)"
+            name="endpoint"
+            extra={
+              relayEnabled
+                ? '填 SDK 实际地址即可（如 http://10.x.x.x:12001）。浏览器请求会自动经本页同源中转，无需关心 CORS/代理细节。'
+                : 'Optional; leave empty for the official AWS endpoint.'
+            }
+          >
             <Input placeholder="https://s3vectors.us-east-1.api.aws (optional)" />
+          </Form.Item>
+
+          <Form.Item name="relay" valuePropName="checked">
+            <Checkbox>
+              自动中转（推荐）：浏览器请求经本页同源转发到上面的地址，规避内网服务缺少
+              CORS 的问题
+            </Checkbox>
           </Form.Item>
 
           <Form.Item name="sessionOnly" valuePropName="checked">

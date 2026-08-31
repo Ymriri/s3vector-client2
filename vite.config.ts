@@ -1,19 +1,27 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { s3vRelayPlugin } from './vite.relay';
 
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-  },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    setupFiles: './src/test/setup.ts',
-    // AntD-heavy jsdom tests can exceed the 5s default on a busy machine.
-    testTimeout: 20000,
-  },
+// Test timeout for AntD-heavy jsdom suites on a busy machine.
+const testConfig = {
+  globals: true,
+  environment: 'jsdom',
+  setupFiles: './src/test/setup.ts',
+  testTimeout: 20000,
+};
+
+export default defineConfig(({ mode }) => {
+  if (mode === 'test') {
+    return {
+      plugins: [react()],
+      resolve: { alias: { '@': path.resolve(__dirname, './src') } },
+      test: testConfig,
+    };
+  }
+  return {
+    plugins: [react(), s3vRelayPlugin()],
+    resolve: { alias: { '@': path.resolve(__dirname, './src') } },
+    test: testConfig,
+  };
 });
