@@ -116,6 +116,21 @@ describe('S3VectorsClientFactory', () => {
     expect(mockMiddlewareAdd).not.toHaveBeenCalled();
   });
 
+  it('does not relay official AWS endpoints', () => {
+    const factory = new S3VectorsClientFactory({
+      region: 'us-east-1',
+      accessKeyId: 'AKIA5',
+      secretAccessKey: 'secret5',
+      endpoint: 'https://s3vectors.us-east-1.api.aws',
+    });
+    factory.getClient();
+
+    expect(lastConstructorCall()).toMatchObject({
+      endpoint: 'https://s3vectors.us-east-1.api.aws',
+    });
+    expect(mockMiddlewareAdd).not.toHaveBeenCalled();
+  });
+
   it('does not double-relay an already-relayed endpoint', () => {
     const factory = new S3VectorsClientFactory({
       region: 'us-east-1',

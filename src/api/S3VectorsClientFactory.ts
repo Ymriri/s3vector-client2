@@ -4,12 +4,27 @@ import { S3VectorsClient } from '@aws-sdk/client-s3vectors';
  * Marker path where this page's own origin serves the transparent relay
  * (see vite.relay.ts). The SDK connects to `<origin>/s3v-api` and carries
  * the real endpoint in the `x-s3v-target` header, so the browser never
- * makes a cross-origin call to the internal service. Direct AWS endpoints
- * are relayed too — harmless (AWS allows all origins) and keeps one code
- * path; Node/SSR usage is unaffected.
+ * makes a cross-origin call to the internal service. Official AWS endpoints
+ * are NOT relayed (they allow all origins, and relaying would break SigV4);
+ * Node/SSR usage is unaffected.
  */
 export const SAME_ORIGIN_RELAY_PATH = '/s3v-api';
 export const RELAY_TARGET_HEADER = 'x-s3v-target';
+
+/** Official AWS endpoints: CORS-friendly, and SigV4 must not be relayed. */
+export function isAwsEndpoint(endpoint: string): boolean {
+  try {
+    const { hostname } = new URL(endpoint);
+    return (
+      hostname.endsWith('.amazonaws.com') ||
+      hostname.endsWith('.amazonaws.com.cn') ||
+      hostname.endsWith('.api.aws') ||
+      hostname === 'aws.amazon.com'
+    );
+  } catch {
+    return false;
+  }
+}
 
 function isBrowser(): boolean {
   return (
@@ -66,6 +81,7 @@ export class S3VectorsClientFactory {
     const target = this.settings.endpoint;
     if (!target) return null;
     if (target.endsWith(SAME_ORIGIN_RELAY_PATH)) return null; // already relayed
+    if (isAwsEndpoint(target)) return null; // AWS allows CORS; relay would break SigV4
     const origin = window.location.origin;
     if (!origin || origin === 'null') return null;
     return { sdkEndpoint: `${origin}${SAME_ORIGIN_RELAY_PATH}`, target };
