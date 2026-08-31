@@ -1,5 +1,18 @@
-import { useEffect, useState } from 'react';
-import { Breadcrumb, Card, Space, Spin, Typography } from 'antd';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Breadcrumb,
+  Card,
+  Col,
+  Descriptions,
+  Row,
+  Select,
+  Skeleton,
+  Space,
+  Tag,
+  Typography,
+  message,
+} from 'antd';
+import { CopyOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import type { BucketService } from '../api/buckets';
 import { useBucketService } from '../api/useBucketService';
@@ -27,6 +40,14 @@ interface IndexOption {
   label: string;
 }
 
+interface IndexInfo {
+  indexName: string;
+  dimension: number;
+  distanceMetric: string;
+  indexArn: string;
+  creationTime: Date;
+}
+
 export function QueryConsoleView({
   bucketService,
   indexService,
@@ -40,6 +61,12 @@ export function QueryConsoleView({
   const [indexLoading, setIndexLoading] = useState(false);
   const [indexError, setIndexError] = useState<AwsErrorLike | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<string | null>(null);
+
+  const [indexInfo, setIndexInfo] = useState<IndexInfo | null>(null);
+  const [indexInfoLoading, setIndexInfoLoading] = useState(false);
+  const [indexInfoError, setIndexInfoError] = useState<AwsErrorLike | null>(
+    null
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +96,7 @@ export function QueryConsoleView({
     if (!selectedBucket) {
       setIndexes([]);
       setSelectedIndex(null);
+      setIndexInfo(null);
       return;
     }
     let cancelled = false;
@@ -99,102 +127,228 @@ export function QueryConsoleView({
     };
   }, [selectedBucket, indexService]);
 
+  const fetchIndexInfo = useCallback(
+    async (bucketName: string, indexName: string) => {
+      setIndexInfoLoading(true);
+      setIndexInfoError(null);
+      setIndexInfo(null);
+      try {
+        const response = await indexService.getIndex(bucketName, indexName);
+        const idx = response.index;
+        if (idx) {
+          setIndexInfo({
+            indexName: idx.indexName ?? indexName,
+            dimension: idx.dimension ?? 0,
+            distanceMetric: idx.distanceMetric ?? 'unknown',
+            indexArn: idx.indexArn ?? '',
+            creationTime: new Date(idx.creationTime ?? Date.now()),
+          });
+        }
+      } catch (err) {
+        setIndexInfoError(errorFromCaught(err));
+      } finally {
+        setIndexInfoLoading(false);
+      }
+    },
+    [indexService]
+  );
+
+  useEffect(() => {
+    if (selectedBucket && selectedIndex) {
+      void fetchIndexInfo(selectedBucket, selectedIndex);
+    } else {
+      setIndexInfo(null);
+    }
+  }, [selectedBucket, selectedIndex, fetchIndexInfo]);
+
+  const handleCopyArn = async (arn: string) => {
+    try {
+      await navigator.clipboard.writeText(arn);
+      void message.success('ARN copied');
+    } catch {
+      void message.error('Failed to copy');
+    }
+  };
+
   const selectedBucketName = selectedBucket ?? undefined;
   const selectedIndexName = selectedIndex ?? undefined;
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }} size="large">
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Breadcrumb
         items={[
           { title: <Link to="/">Dashboard</Link> },
           { title: 'Query Console' },
         ]}
       />
-      <Typography.Title level={3} style={{ margin: 0 }}>
+      <Typography.Title level={3} style={{ margin: 0, color: '#f0f4f8' }}>
         Query Console
       </Typography.Title>
 
       <ErrorBanner error={bucketError} onDismiss={() => setBucketError(null)} />
 
-      <Card title="Query">
-        <Space wrap style={{ marginBottom: 16 }}>
-          <label htmlFor="bucket-select">
-            Bucket
-            <select
-              id="bucket-select"
-              value={selectedBucket ?? ''}
-              onChange={(e) => {
-                setSelectedBucket(e.target.value || null);
+      <Card
+        title="Connection"
+        style={{
+          background: '#151e2e',
+          border: '1px solid #1e293b',
+        }}
+      >
+        <Row gutter={24}>
+          <Col span={12}>
+            <div style={{ marginBottom: 8 }}>
+              <Typography.Text
+                strong
+                style={{ color: '#cbd5e1', fontSize: 13 }}
+              >
+                Bucket
+              </Typography.Text>
+            </div>
+            <Select
+              placeholder="Select bucket"
+              style={{ width: '100%' }}
+              value={selectedBucket ?? undefined}
+              onChange={(val) => {
+                setSelectedBucket(val ?? null);
                 setSelectedIndex(null);
               }}
-              style={{
-                width: 200,
-                display: 'block',
-                height: 36,
-                backgroundColor: '#151e2e',
-                color: '#f0f4f8',
-                border: '1px solid #1e293b',
-                borderRadius: 8,
-                padding: '9px 12px',
-              }}
-            >
-              <option value="">Select bucket</option>
-              {buckets.map((b) => (
-                <option key={b.value} value={b.value}>
-                  {b.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label htmlFor="index-select">
-            Index
-            <select
-              id="index-select"
-              value={selectedIndex ?? ''}
-              onChange={(e) => setSelectedIndex(e.target.value || null)}
-              disabled={!selectedBucket}
-              style={{
-                width: 200,
-                display: 'block',
-                height: 36,
-                backgroundColor: '#151e2e',
-                color: '#f0f4f8',
-                border: '1px solid #1e293b',
-                borderRadius: 8,
-                padding: '9px 12px',
-              }}
-            >
-              <option value="">Select index</option>
-              {indexes.map((i) => (
-                <option key={i.value} value={i.value}>
-                  {i.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </Space>
+              allowClear
+              options={buckets}
+            />
+          </Col>
+          <Col span={12}>
+            <div style={{ marginBottom: 8 }}>
+              <Typography.Text
+                strong
+                style={{ color: '#cbd5e1', fontSize: 13 }}
+              >
+                Index
+              </Typography.Text>
+            </div>
+            {indexLoading ? (
+              <Skeleton.Input active style={{ width: '100%', height: 32 }} />
+            ) : (
+              <Select
+                placeholder="Select index"
+                style={{ width: '100%' }}
+                value={selectedIndex ?? undefined}
+                onChange={(val) => setSelectedIndex(val ?? null)}
+                disabled={!selectedBucket}
+                allowClear
+                options={indexes}
+              />
+            )}
+          </Col>
+        </Row>
 
-        {indexLoading ? (
-          <Spin data-testid="indexes-loading" />
-        ) : (
-          <ErrorBanner
-            error={indexError}
-            onDismiss={() => setIndexError(null)}
-          />
+        {indexError && (
+          <div style={{ marginTop: 12 }}>
+            <ErrorBanner
+              error={indexError}
+              onDismiss={() => setIndexError(null)}
+            />
+          </div>
         )}
+      </Card>
 
-        {selectedBucketName && selectedIndexName ? (
+      {indexInfoLoading && (
+        <Card
+          title="Index Info"
+          style={{
+            background: '#151e2e',
+            border: '1px solid #1e293b',
+          }}
+        >
+          <Skeleton active paragraph={{ rows: 2 }} />
+        </Card>
+      )}
+
+      {indexInfoError && (
+        <ErrorBanner
+          error={indexInfoError}
+          onDismiss={() => setIndexInfoError(null)}
+        />
+      )}
+
+      {indexInfo && !indexInfoLoading && (
+        <Card
+          title="Index Info"
+          style={{
+            background: '#151e2e',
+            border: '1px solid #1e293b',
+          }}
+        >
+          <Descriptions column={2} size="small">
+            <Descriptions.Item label="Index Name">
+              <Typography.Text
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  color: '#f0f4f8',
+                }}
+              >
+                {indexInfo.indexName}
+              </Typography.Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="Dimension">
+              <Tag color="cyan">{indexInfo.dimension}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="Distance Metric">
+              <Tag color="blue">{indexInfo.distanceMetric}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="Created">
+              {indexInfo.creationTime.toLocaleString()}
+            </Descriptions.Item>
+            <Descriptions.Item label="ARN" span={2}>
+              <Space>
+                <Typography.Text
+                  style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 12,
+                    color: '#94a3b8',
+                    wordBreak: 'break-all',
+                  }}
+                >
+                  {indexInfo.indexArn}
+                </Typography.Text>
+                <CopyOutlined
+                  onClick={() => void handleCopyArn(indexInfo.indexArn)}
+                  style={{ color: '#22d3ee', cursor: 'pointer' }}
+                />
+              </Space>
+            </Descriptions.Item>
+          </Descriptions>
+        </Card>
+      )}
+
+      {selectedBucketName && selectedIndexName ? (
+        <Card
+          title="Query"
+          style={{
+            background: '#151e2e',
+            border: '1px solid #1e293b',
+          }}
+        >
           <QueryForm
             bucketName={selectedBucketName}
             indexName={selectedIndexName}
             vectorService={vectorService}
+            dimension={indexInfo?.dimension}
           />
-        ) : (
-          <Typography.Text type="secondary">
+        </Card>
+      ) : (
+        <Card
+          style={{
+            background: '#151e2e',
+            border: '1px dashed #334155',
+            textAlign: 'center',
+            padding: '48px 24px',
+          }}
+        >
+          <Typography.Text style={{ color: '#94a3b8' }}>
             Select a bucket and index to build a query.
           </Typography.Text>
-        )}
-      </Card>
+        </Card>
+      )}
     </Space>
   );
 }

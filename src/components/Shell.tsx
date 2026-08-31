@@ -29,27 +29,39 @@ function Shell() {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider theme="light" breakpoint="lg" collapsedWidth="0">
+      <Sider theme="dark" breakpoint="lg" collapsedWidth="0" width={240}>
         <div
           style={{
-            height: 48,
+            height: 56,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
+            paddingLeft: 24,
             fontWeight: 600,
+            fontSize: 16,
+            color: '#f0f4f8',
+            borderBottom: '1px solid #1e293b',
           }}
         >
-          S3Vector
+          <span style={{ color: '#ff9900' }}>●</span>{' '}
+          <span style={{ marginLeft: 6 }}>S3Vectors</span>
         </div>
         <Menu
           mode="inline"
           selectedKeys={[selectedKey(location.pathname)]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
+          style={{ borderRight: 0, marginTop: 8 }}
         />
       </Sider>
-      <Layout>
-        <Content style={{ margin: 24 }}>
+      <Layout style={{ background: '#0b0f14' }}>
+        <Content
+          style={{
+            margin: 0,
+            padding: 24,
+            background: '#0b0f14',
+            minHeight: '100vh',
+          }}
+        >
           <Outlet />
         </Content>
       </Layout>
