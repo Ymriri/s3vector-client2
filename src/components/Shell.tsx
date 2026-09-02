@@ -1,11 +1,13 @@
-import { Layout, Menu } from 'antd';
+import { Layout, Menu, Select, Typography, theme } from 'antd';
 import {
   DashboardOutlined,
   DatabaseOutlined,
   SearchOutlined,
   SettingOutlined,
+  CloudOutlined,
 } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useProfilesStore } from '../settings/profilesStore';
 
 const { Sider, Content } = Layout;
 
@@ -26,6 +28,10 @@ function selectedKey(pathname: string): string {
 function Shell() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { token } = theme.useToken();
+  const profiles = useProfilesStore((s) => s.profiles);
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
+  const applyProfile = useProfilesStore((s) => s.applyProfile);
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -52,6 +58,43 @@ function Shell() {
           onClick={({ key }) => navigate(key)}
           style={{ borderRight: 0, marginTop: 8 }}
         />
+        {profiles.length > 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              padding: '12px 16px 16px',
+              borderTop: `1px solid ${token.colorBorderSecondary}`,
+            }}
+          >
+            <Typography.Text
+              type="secondary"
+              style={{
+                fontSize: 11,
+                display: 'block',
+                marginBottom: 6,
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+              }}
+            >
+              <CloudOutlined /> 当前连接
+            </Typography.Text>
+            <Select
+              size="small"
+              style={{ width: '100%' }}
+              aria-label="current connection profile"
+              value={activeProfileId ?? undefined}
+              placeholder="未选择配置"
+              onChange={(id) => applyProfile(id)}
+              options={profiles.map((p) => ({
+                value: p.id,
+                label: p.name,
+              }))}
+            />
+          </div>
+        )}
       </Sider>
       <Layout style={{ background: '#0b0f14' }}>
         <Content

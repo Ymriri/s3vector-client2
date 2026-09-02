@@ -8,8 +8,24 @@ import {
   Alert,
   Space,
   Typography,
+  List,
+  Tag,
+  Modal,
+  Popconfirm,
+  theme,
 } from 'antd';
+import {
+  PlusOutlined,
+  SaveOutlined,
+  DeleteOutlined,
+  CheckCircleFilled,
+  SwitcherOutlined,
+} from '@ant-design/icons';
 import { useSettingsStore } from '../settings/settingsStore';
+import {
+  useProfilesStore,
+  type ConnectionProfile,
+} from '../settings/profilesStore';
 import { S3VectorsClientFactory } from '../api/S3VectorsClientFactory';
 import { BucketService } from '../api/buckets';
 import {
@@ -20,6 +36,14 @@ import {
 
 function Settings() {
   const settings = useSettingsStore();
+  const { profiles, activeProfileId } = useProfilesStore();
+  const addProfile = useProfilesStore((s) => s.addProfile);
+  const removeProfile = useProfilesStore((s) => s.removeProfile);
+  const applyProfile = useProfilesStore((s) => s.applyProfile);
+  const syncActiveFromSettings = useProfilesStore(
+    (s) => s.syncActiveFromSettings
+  );
+  const { token } = theme.useToken();
   const relayEnabled = settings.relay !== false;
   const [form] = Form.useForm();
   const [testStatus, setTestStatus] = useState<{
@@ -27,6 +51,8 @@ function Settings() {
     message: string;
   } | null>(null);
   const [testing, setTesting] = useState(false);
+  const [saveAsOpen, setSaveAsOpen] = useState(false);
+  const [saveAsName, setSaveAsName] = useState('');
 
   useEffect(() => {
     form.setFieldsValue({
@@ -72,6 +98,8 @@ function Settings() {
         ? { type: 'error', message: warnings.join('；') }
         : null
     );
+    // Keep the active profile (if any) in sync with the live settings.
+    syncActiveFromSettings();
   };
 
   const handleTestConnection = async () => {
@@ -106,10 +134,181 @@ function Settings() {
     }
   };
 
+  const handleSaveAsProfile = () => {
+    const name = saveAsName.trim();
+    if (!name) return;
+    const current = form.getFieldsValue();
+    addProfile({
+      name,
+      region: sanitizePlainInput(current.region) || 'us-east-1',
+      accessKeyId: sanitizePlainInput(current.accessKeyId || ''),
+      secretAccessKey: sanitizePlainInput(current.secretAccessKey || ''),
+      sessionToken: sanitizePlainInput(current.sessionToken || ''),
+      endpoint: sanitizePlainInput(current.endpoint || ''),
+      relay: current.relay !== false,
+      sessionOnly: current.sessionOnly ?? false,
+    });
+    const created = useProfilesStore.getState();
+    const newest = created.profiles[created.profiles.length - 1];
+    if (newest) created.applyProfile(newest.id);
+    setSaveAsOpen(false);
+    setSaveAsName('');
+    setTestStatus({
+      type: 'success',
+      message: `已保存连接配置「${name}」并设为当前使用。`,
+    });
+  };
+
+  const handleApplyProfile = (profile: ConnectionProfile) => {
+    if (applyProfile(profile.id)) {
+      form.setFieldsValue({
+        accessKeyId: profile.accessKeyId,
+        secretAccessKey: profile.secretAccessKey,
+        sessionToken: profile.sessionToken,
+        region: profile.region,
+        endpoint: profile.endpoint,
+        sessionOnly: profile.sessionOnly ?? false,
+        relay: profile.relay ?? true,
+      });
+      setTestStatus({
+        type: 'success',
+        message: `已切换到连接配置「${profile.name}」。`,
+      });
+    }
+  };
+
+  const activeName = profiles.find((p) => p.id === activeProfileId)?.name;
+
   return (
     <>
       <Typography.Title level={3}>Settings</Typography.Title>
-      <Card style={{ maxWidth: 640 }}>
+      <Card
+        title={
+          <Space>
+            <SwitcherOutlined />
+            连接配置（Profile）
+            {activeName && (
+              <Tag color="cyan" icon={<CheckCircleFilled />}>
+                使用中：{activeName}
+              </Tag>
+            )}
+          </Space>
+        }
+        style={{ maxWidth: 640, marginBottom: 24 }}
+      >
+        <List
+          size="small"
+          dataSource={profiles}
+          locale={{
+            emptyText:
+              '还没有保存的连接配置，填好下方表单后点「另存为 Profile」',
+          }}
+          renderItem={(p) => {
+            const isActive = p.id === activeProfileId;
+            return (
+              <List.Item
+                style={{
+                  opacity: isActive ? 1 : 0.75,
+                  border: `1px solid ${
+                    isActive ? token.colorPrimaryBorder : 'transparent'
+                  }`,
+                  borderRadius: 8,
+                  paddingLeft: 8,
+                  paddingRight: 8,
+                }}
+                actions={[
+                  <Button
+                    key="apply"
+                    size="small"
+                    type={isActive ? 'default' : 'primary'}
+                    ghost={!isActive}
+                    disabled={isActive}
+                    onClick={() => handleApplyProfile(p)}
+                  >
+                    {isActive ? '使用中' : '使用'}
+                  </Button>,
+                  <Popconfirm
+                    key="delete"
+                    title="删除此连接配置？"
+                    okText="删除"
+                    cancelText="取消"
+                    onConfirm={() => removeProfile(p.id)}
+                  >
+                    <Button
+                      key="delete-btn"
+                      size="small"
+                      danger
+                      type="text"
+                      aria-label={`delete-${p.name}`}
+                      icon={<DeleteOutlined />}
+                    />
+                  </Popconfirm>,
+                ]}
+              >
+                <List.Item.Meta
+                  title={
+                    <Space size={8}>
+                      <span style={{ fontWeight: 600 }}>{p.name}</span>
+                      {p.endpoint ? (
+                        <Tag color="blue">自定义端点</Tag>
+                      ) : (
+                        <Tag color="gold">AWS 官方</Tag>
+                      )}
+                      {p.relay === false && <Tag>直连</Tag>}
+                    </Space>
+                  }
+                  description={
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {p.region} · {p.accessKeyId || '（无 AK）'}
+                      {p.endpoint ? ` · ${p.endpoint}` : ''}
+                    </Typography.Text>
+                  }
+                />
+              </List.Item>
+            );
+          }}
+        />
+        <Button
+          icon={<SaveOutlined />}
+          onClick={() => setSaveAsOpen(true)}
+          style={{ marginTop: 12 }}
+        >
+          另存当前表单为 Profile
+        </Button>
+      </Card>
+
+      <Modal
+        title="另存为连接配置"
+        open={saveAsOpen}
+        onOk={handleSaveAsProfile}
+        onCancel={() => setSaveAsOpen(false)}
+        okText="保存"
+        cancelText="取消"
+        okButtonProps={{ disabled: saveAsName.trim() === '' }}
+        destroyOnHidden
+      >
+        <Input
+          placeholder="配置名称，如：AWS ap-southeast-1 / 内网环境"
+          value={saveAsName}
+          onChange={(e) => setSaveAsName(e.target.value)}
+          onPressEnter={handleSaveAsProfile}
+        />
+      </Modal>
+
+      <Card
+        title="当前连接参数"
+        style={{ maxWidth: 640 }}
+        extra={
+          <Button
+            size="small"
+            type="text"
+            icon={<PlusOutlined />}
+            onClick={() => setSaveAsOpen(true)}
+          >
+            另存为 Profile
+          </Button>
+        }
+      >
         <Form
           form={form}
           layout="vertical"
@@ -189,6 +388,12 @@ function Settings() {
               </Button>
               <Button onClick={handleTestConnection} loading={testing}>
                 Test Connection
+              </Button>
+              <Button
+                icon={<SaveOutlined />}
+                onClick={() => setSaveAsOpen(true)}
+              >
+                另存为 Profile
               </Button>
             </Space>
           </Form.Item>
